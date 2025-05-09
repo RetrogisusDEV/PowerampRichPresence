@@ -33,8 +33,7 @@ jobs:
           ANDROID_HOME: $ {{ env.ANDROID_HOME }}
 
       - name: Upload APK artifacts
-        uses: actions/upload-artifact@v3
-        if: ${{ always() }}
+        uses: actions/upload-artifact@v4
         with:
           name: app-debug-apk
           path: app/build/output/apk/debug/app-debug-apk
