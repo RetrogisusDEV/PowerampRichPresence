@@ -12,15 +12,16 @@ import java.net.URL
 import java.net.URLEncoder
 import java.util.concurrent.ConcurrentHashMap
 
-class SpotifyHandler(private val context: Context) {
+class DiscordHandler(private val context: Context) {
 
     companion object {
-        const val TAG = "SpotifyHandler"
-        const val SPOTIFY_TOKEN_URL = "https://open.spotify.com/get_access_token"
-        const val SPOTIFY_SEARCH_URL = "https://api.spotify.com/v1/search?q=%s&type=track&limit=1"
+        const val TAG = "DiscordHandler"
+        const val DISCORD_CLIENT_ID = "1170544369456140339"
+        const val DISCORD_TOKEN_URL = "https://discord.com/api/oauth2/token"
+        const val DISCORD_APP_API_URL = "https://discord.com/api/v10/applications/$DISCORD_CLIENT_ID/rpc"
         const val CACHE_FILE = "cache.json"
         const val MAX_CACHE_SIZE = 500
-        const val PREFS_NAME = "SpotifyPrefs"
+        const val PREFS_NAME = "DiscordPrefs"
         const val TOKEN_KEY = "accessToken"
         const val TOKEN_EXPIRATION_KEY = "tokenExpirationTime"
     }
@@ -41,11 +42,11 @@ class SpotifyHandler(private val context: Context) {
         if (trackTitle == null || artist == null) return
 
         try {
-            val token = getSpotifyAccessToken()
+            val token = getDiscordAccessToken()
 
             // Check if track URI is already cached
             val cacheKey = "$trackTitle|$artist"
-            val trackUri = trackCache[cacheKey] ?: searchSpotifyTrack(token, trackTitle, artist)?.also {
+            val trackUri = trackCache[cacheKey] ?: searchDiscordApp(token, trackTitle, artist)?.also {
                 // Cache the track URI for future use
                 trackCache[cacheKey] = it
                 saveTrackCache()
@@ -53,10 +54,10 @@ class SpotifyHandler(private val context: Context) {
 
             if (trackUri != null) {
                 Log.i(TAG, "Track URI: $trackUri, Title: $trackTitle, Artist: $artist")
-                sendSpotifyMetadataChanged(trackUri, trackTitle, artist)
+                sendDiscordMetadataChanged(trackUri, trackTitle, artist)
 
                 val playingStatus = lastPlayingStatus ?: true
-                sendSpotifyPlaybackStateChanged(playingStatus, position)
+                sendDiscordPlaybackStateChanged(playingStatus, position)
             }
 
         } catch (e: Exception) {
@@ -73,7 +74,7 @@ class SpotifyHandler(private val context: Context) {
 
             lastPlayingStatus = playing
 
-            sendSpotifyPlaybackStateChanged(playing, position)
+            sendDiscordPlaybackStateChanged(playing, position)
 
         } catch (e: Exception) {
             e.printStackTrace()
@@ -81,7 +82,7 @@ class SpotifyHandler(private val context: Context) {
     }
 
     // Get cached token from shared preferences or fetch new if expired
-    private suspend fun getSpotifyAccessToken(): String {
+    private suspend fun getDiscordAccessToken(): String {
         val prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
         val currentTime = System.currentTimeMillis()
 
@@ -93,11 +94,12 @@ class SpotifyHandler(private val context: Context) {
         }
 
         // Fetch new token if expired or missing
-        val tokenResponse = fetchSpotifyToken()
+        val tokenResponse = fetchDiscordToken()
         val tokenJson = JSONObject(tokenResponse)
 
-        val accessToken = tokenJson.getString("accessToken")
-        val tokenExpirationTime = tokenJson.getLong("accessTokenExpirationTimestampMs")
+        val accessToken = tokenJson.getString("access_token")
+        val expiresIn = tokenJson.getLong("expires_in")
+        val tokenExpirationTime = currentTime + expiresIn * 1000
 
         // Save token and expiration time to shared preferences
         prefs.edit().apply {
@@ -109,10 +111,19 @@ class SpotifyHandler(private val context: Context) {
         return accessToken
     }
 
-    private suspend fun fetchSpotifyToken(): String {
+    private suspend fun fetchDiscordToken(): String {
         return withContext(Dispatchers.IO) {
-            val url = URL(SPOTIFY_TOKEN_URL)
+            val url = URL(DISCORD_TOKEN_URL)
             val urlConnection = url.openConnection() as HttpURLConnection
+            urlConnection.requestMethod = "POST"
+            urlConnection.doOutput = true
+            urlConnection.setRequestProperty("Content-Type", "application/x-www-form-urlencoded")
+
+            val postData = "client_id=$DISCORD_CLIENT_ID&grant_type=client_credentials"
+            val outputStream = urlConnection.outputStream
+            outputStream.write(postData.toByteArray(Charsets.UTF_8))
+            outputStream.flush()
+            outputStream.close()
 
             try {
                 val stream = InputStreamReader(urlConnection.inputStream)
@@ -131,10 +142,10 @@ class SpotifyHandler(private val context: Context) {
         }
     }
 
-    private suspend fun searchSpotifyTrack(accessToken: String, trackTitle: String, artist: String): String? {
+    private suspend fun searchDiscordApp(accessToken: String, trackTitle: String, artist: String): String? {
         return withContext(Dispatchers.IO) {
-            val query = URLEncoder.encode("$trackTitle artist:$artist", "UTF-8")
-            val url = URL(String.format(SPOTIFY_SEARCH_URL, query))
+            val query = URLEncoder.encode("$trackTitle $artist", "UTF-8")
+            val url = URL("$DISCORD_APP_API_URL/search?query=$query")
             val urlConnection = url.openConnection() as HttpURLConnection
             urlConnection.setRequestProperty("Authorization", "Bearer $accessToken")
 
@@ -151,13 +162,13 @@ class SpotifyHandler(private val context: Context) {
                 val responseJson = JSONObject(sb.toString())
                 Log.i(TAG, "Search response: $responseJson")
 
-                val tracks = responseJson.getJSONObject("tracks").getJSONArray("items")
+                val items = responseJson.getJSONArray("items")
 
-                if (tracks.length() > 0) {
-                    tracks.getJSONObject(0).getString("uri")
+                if (items.length() > 0) {
+                    items.getJSONObject(0).getString("uri")
                 } else {
-                    // No tracks found, returning null
-                    Log.e(TAG, "No tracks found for query: $query")
+                    // No items found, returning null
+                    Log.e(TAG, "No items found for query: $query")
                     null
                 }
             } finally {
@@ -167,7 +178,7 @@ class SpotifyHandler(private val context: Context) {
     }
 
     @Suppress("SpellCheckingInspection")
-    private fun sendSpotifyMetadataChanged(trackUri: String, trackTitle: String, artist: String) {
+    private fun sendDiscordMetadataChanged(trackUri: String, trackTitle: String, artist: String) {
         Log.i(TAG, "Sending metadata changed broadcast with track: $trackTitle, artist: $artist, uri: $trackUri")
         val metadataIntent = Intent("com.spotify.music.metadatachanged").apply {
             putExtra("id", trackUri)
@@ -179,7 +190,7 @@ class SpotifyHandler(private val context: Context) {
     }
 
     @Suppress("SpellCheckingInspection")        // Suppress spell check inspection for the broadcast name
-    private fun sendSpotifyPlaybackStateChanged(isPlaying: Boolean, position: Int) {
+    private fun sendDiscordPlaybackStateChanged(isPlaying: Boolean, position: Int) {
         Log.i(TAG, "Sending playback state changed broadcast with isPlaying: $isPlaying, position: $position")
         val playbackStateIntent = Intent("com.spotify.music.playbackstatechanged").apply {
             putExtra("playing", isPlaying)

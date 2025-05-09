@@ -19,9 +19,15 @@ class PowerampReceiver : BroadcastReceiver(), CoroutineScope by CoroutineScope(D
         const val TAG = "PowerampReceiver"
     }
 
-    @OptIn(DelicateCoroutinesApi::class)
+    private lateinit var discordHandler: DiscordHandler
+
     override fun onReceive(context: Context, intent: Intent) {
-        Log.e("PowerampReceiver", "Received intent: $intent")
+        Log.e(TAG, "Received intent: $intent")
+
+        if (!::discordHandler.isInitialized) {
+            discordHandler = DiscordHandler(context)
+        }
+
         if ("com.maxmpz.audioplayer.TRACK_CHANGED_EXPLICIT" == intent.action) {
             val extras = intent.extras
             if (extras != null) {
@@ -32,9 +38,8 @@ class PowerampReceiver : BroadcastReceiver(), CoroutineScope by CoroutineScope(D
                 Log.i(TAG, "Track: $trackTitle, Artist: $artist, Position: $position")
 
                 if (isConnectedToInternet(context)) {
-                    // we handle the track change in a coroutine to not block the main thread
-                    GlobalScope.launch {
-                        SpotifyHandler(context).handleTrackChange(trackTitle, artist, position)
+                    launch {
+                        discordHandler.handleTrackChange(trackTitle, artist, position)
                     }
                 }
             }
@@ -43,12 +48,11 @@ class PowerampReceiver : BroadcastReceiver(), CoroutineScope by CoroutineScope(D
             if (extras != null) {
                 val isPlaying = !extras.getBoolean("paused", true)
                 val position = extras.getInt("pos", 0) * 1000
-                Log.w("PowerampReceiver", "Playing: $isPlaying, Position: $position")
+                Log.w(TAG, "Playing: $isPlaying, Position: $position")
 
                 if (isConnectedToInternet(context)) {
-                    // we handle the playback state change in a coroutine to not block the main thread
-                    GlobalScope.launch {
-                        SpotifyHandler(context).handlePlaybackStateChanged(isPlaying, position)
+                    launch {
+                        discordHandler.handlePlaybackStateChanged(isPlaying, position)
                     }
                 }
             }
