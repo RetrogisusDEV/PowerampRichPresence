@@ -4,15 +4,15 @@ plugins {
 }
 
 android {
-    namespace = "com.github.diniboy1123.poweramprichpresence"
+    namespace = "app.retrogisusdev.poweramprichpresence"
     compileSdk = 34
 
     defaultConfig {
-        applicationId = "com.github.diniboy1123.poweramprichpresence"
+        applicationId = "app.retrogisusdev.poweramprichpresence"
         minSdk = 26
         targetSdk = 34
         versionCode = 1
-        versionName = "1.0"
+        versionName = "v1.0.0"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
